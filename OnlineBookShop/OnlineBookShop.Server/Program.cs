@@ -26,7 +26,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         b => b.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)
     ));
 
-
 // 2. ASP.NET Identity
 builder.Services.AddIdentity<AppUser, IdentityRole<int>>()
     .AddEntityFrameworkStores<AppDbContext>()
@@ -73,26 +72,23 @@ builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<IOrderStatusHistoryService, OrderStatusHistoryService>();
 builder.Services.AddScoped<IStockHistoryService, StockHistoryService>();
 
-
 // 7. AutoMapper
 builder.Services.AddAutoMapper(typeof(MappingProfile));
 
-// 8. CORS (React/Vite frontend-)
+// 8. CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://localhost:5174" ,"https://sabbirbookshop.vercel.app" )
+        policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "https://sabbirbookshop.vercel.app")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
 });
 
-// 9. Controllers + Swagger / OpenAPI
+// 9. Controllers + Swagger
 builder.Services.AddControllers();
-
-// Swagger / OpenAPI configuration
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -103,7 +99,6 @@ builder.Services.AddSwaggerGen(c =>
         Description = "Multi-vendor book store API with JWT authentication and role-based access"
     });
 
-    // JWT Bearer token support in Swagger UI
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Example: 'Bearer {token}'",
@@ -118,11 +113,7 @@ builder.Services.AddSwaggerGen(c =>
         {
             new OpenApiSecurityScheme
             {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
             },
             Array.Empty<string>()
         }
@@ -132,52 +123,52 @@ builder.Services.AddSwaggerGen(c =>
 // ================================================
 // Build & Configure the HTTP pipeline
 // ================================================
+
 var app = builder.Build();
 
-// Role seeding
+// ====================== Apply Migrations + Seed Data ======================
+// এই অংশটুকু নতুন যোগ করা হয়েছে
 using (var scope = app.Services.CreateScope())
 {
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<int>>>();
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+
+    // 1. Apply Migrations (টেবিল তৈরি করবে)
+    await dbContext.Database.MigrateAsync();
+
+    // 2. Seed Roles
     await RoleSeeder.SeedRolesAsync(roleManager);
-}
-// Initial data seeding 
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    var userManager = services.GetRequiredService<UserManager<AppUser>>();
-    var roleManager = services.GetRequiredService<RoleManager<IdentityRole<int>>>();
-    var context = services.GetRequiredService<AppDbContext>();
 
-    await InitialDataSeeder.SeedAsync(userManager, roleManager, context);
+    // 3. Initial Data Seeding (যদি InitialDataSeeder থাকে)
+    await InitialDataSeeder.SeedAsync(userManager, roleManager, dbContext);
 }
 
-// Swagger UI
+// ====================== Middleware Pipeline ======================
+
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Online Book Shop API v1");
-    c.RoutePrefix = "swagger"; // → http://localhost:<port>/swagger
+    c.RoutePrefix = "swagger";
     c.DisplayRequestDuration();
     c.EnableDeepLinking();
 });
 
-// Static files (React build output)
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Middleware pipeline
 app.UseHttpsRedirection();
 app.UseCors("AllowReactApp");
-
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// React SPA fallback (index.html serve )
+// React SPA fallback
 app.MapFallbackToFile("/index.html");
 
-// Global exception handling (JSON response)
+// Global exception handling
 app.UseExceptionHandler(errorApp =>
 {
     errorApp.Run(async context =>
