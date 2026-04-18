@@ -14,4 +14,4 @@ WORKDIR /app
 
 COPY --from=build /app/out .
 
-ENTRYPOINT ["dotnet", "OnlineBookShop.dll"]
+ENTRYPOINT ["dotnet", "OnlineBookShop.Server.dll"]
