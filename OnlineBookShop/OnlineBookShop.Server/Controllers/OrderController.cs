@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authorization;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OnlineBookShop.Server.DTOs;
 using OnlineBookShop.Server.Interfaces;
@@ -11,10 +12,12 @@ namespace OnlineBookShop.Server.Controllers
     public class OrderController : ControllerBase
     {
         private readonly IOrderService _orderService;
+        private readonly IVendorService _vendorService;
 
-        public OrderController(IOrderService orderService)
+        public OrderController(IOrderService orderService, IVendorService vendorService)
         {
             _orderService = orderService;
+            _vendorService = vendorService; // ← add করো
         }
 
         // Customer: Create a new order
@@ -58,6 +61,7 @@ namespace OnlineBookShop.Server.Controllers
 
             return Ok(order);
         }
+
         // Vendor/Admin: Update order status
         [HttpPut("{orderId}/status")]
         [Authorize(Roles = "Vendor,Admin")]
@@ -91,16 +95,24 @@ namespace OnlineBookShop.Server.Controllers
             return Ok(new { Message = "Order cancelled successfully" });
         }
 
-        // Vendor: Get my orders (books from my shop)
+        // ── Vendor: Get my orders 
+    
         [HttpGet("vendor/my")]
         [Authorize(Roles = "Vendor")]
         public async Task<IActionResult> GetVendorOrders()
         {
-            var vendorId = GetUserIdFromClaims();
-            if (vendorId == null)
-                return Unauthorized();
 
-            var orders = await _orderService.GetVendorOrdersAsync(vendorId.Value);
+            var userId = GetUserIdFromClaims();
+            if (userId == null)
+                return Unauthorized();
+            var vendor = await _vendorService.GetVendorByUserIdAsync(userId.Value);
+            if (vendor == null)
+                return NotFound(new { Error = "Vendor profile not found" });
+
+            if (!vendor.IsApproved)
+                return Forbid();
+
+            var orders = await _orderService.GetVendorOrdersAsync(vendor.VendorId);
             return Ok(orders);
         }
 
@@ -110,7 +122,6 @@ namespace OnlineBookShop.Server.Controllers
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
                 return null;
-
             return userId;
         }
     }
